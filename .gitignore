@@ -5,9 +5,6 @@ __pycache__/
 venv/
 .pytest_cache/
 
-# Jupyter
-.ipynb_checkpoints/
-
 # Salidas del pipeline (se regeneran al ejecutar)
 output/
 

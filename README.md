@@ -51,7 +51,6 @@ Los parámetros del evento (rango de fechas y horas, patrón de enlaces, mapeos 
 pipeline-semana-ingenieria/
 ├── main.py                     # ejecuta el pipeline completo (CLI)
 ├── pipeline/                   # una etapa por módulo
-├── notebooks/Laboratorio_12.ipynb
 ├── scripts/generar_datos_muestra.py
 ├── tests/                      # pruebas con pytest
 ├── data/
@@ -87,8 +86,6 @@ python main.py \
 ```bash
 python main.py --datos data/sample/programa_muestra.xlsx --diccionario data/sample/diccionario_muestra.xlsx
 ```
-
-**Notebook:** abre `notebooks/Laboratorio_12.ipynb`. Si no encuentra los archivos reales en `data/raw/`, usa los de muestra. Para Google Colab, la primera celda trae las instrucciones para clonar el repo.
 
 El pipeline termina con código `0` si todo salió bien, y con `1` si se detuvo en la carga o en el layout.
 
