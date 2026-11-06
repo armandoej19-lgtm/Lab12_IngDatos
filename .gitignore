@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Salidas del pipeline (se regeneran al ejecutar)
+output/
+
+# Datos reales: no se suben por defecto (ver README, sección "Datos")
+data/raw/*
+!data/raw/.gitkeep
+
+# Sistema / editores
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
