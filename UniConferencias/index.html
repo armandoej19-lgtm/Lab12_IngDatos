@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UniConferencias | Eventos universitarios</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-container">
+      <a href="#" class="logo" aria-label="UniConferencias inicio">
+        <span class="logo-icon">U</span><span>UniConferencias</span>
+      </a>
+      <nav class="navigation" aria-label="Navegación principal">
+        <button class="nav-link active" data-view="conferencias">Conferencias</button>
+        <button class="nav-link" data-view="calendario">Calendario</button>
+        <button class="nav-link" data-view="agenda">Mi agenda <span id="agenda-badge" class="badge">0</span></button>
+      </nav>
+      <a class="login-button" href="#agenda" data-view-link="agenda">Mi agenda</a>
+    </div>
+  </header>
+
+  <main class="main-container">
+    <section class="hero">
+      <span class="eyebrow">EVENTOS ACADÉMICOS</span>
+      <h1>Encuentra tu próxima conferencia</h1>
+      <p>Explora las conferencias de tu universidad, descubre nuevos temas y organiza tu horario.</p>
+    </section>
+
+    <section class="search-section" aria-label="Buscar conferencias">
+      <label for="search" class="search-label">Buscar conferencias</label>
+      <div class="search-box">
+        <span class="search-icon" aria-hidden="true">⌕</span>
+        <input type="search" id="search" placeholder="Busca por nombre, tema o ponente..." autocomplete="off">
+        <button type="button" class="search-button" id="search-button">Buscar</button>
+      </div>
+    </section>
+
+    <section class="filters" aria-label="Filtros">
+      <div class="filter-group">
+        <label for="campus">Campus</label>
+        <select id="campus"><option value="">Todos los campus</option></select>
+      </div>
+      <div class="filter-group">
+        <label for="day">Día</label>
+        <select id="day">
+          <option value="">Todos los días</option>
+          <option value="lunes">Lunes</option><option value="martes">Martes</option>
+          <option value="miércoles">Miércoles</option><option value="jueves">Jueves</option>
+          <option value="viernes">Viernes</option><option value="sábado">Sábado</option>
+          <option value="domingo">Domingo</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label for="category">Área académica</label>
+        <select id="category"><option value="">Todas las áreas</option></select>
+      </div>
+      <button class="clear-filters" id="clear-filters" type="button">Limpiar filtros</button>
+    </section>
+
+    <section class="conferences-section">
+      <div class="section-heading">
+        <div><h2 id="view-title">Conferencias disponibles</h2><p id="view-subtitle">Consulta los horarios y encuentra las actividades que te interesan.</p></div>
+        <span class="results-count" id="results-count">Cargando…</span>
+      </div>
+      <div id="status" class="status" role="status">Cargando conferencias…</div>
+      <div class="conference-list" id="conference-list">
+        <div class="list-header"><span>Conferencia</span><span>Campus / Ubicación</span><span>Horario</span><span>Acciones</span></div>
+        <div id="conferencias-container"></div>
+      </div>
+    </section>
+
+    <footer class="footer"><p>UniConferencias · Portal de eventos académicos</p></footer>
+  </main>
+  <script src="script.js"></script>
+</body>
+</html>
