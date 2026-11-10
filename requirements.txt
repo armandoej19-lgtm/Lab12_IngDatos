@@ -1,2 +1,7 @@
-pandas>=2.0
+# En Windows se usa pandas 2.x: Smart App Control (Windows 11) bloquea un binario de pandas 3.1
+pandas>=2.0,<3; sys_platform == "win32"
+pandas>=2.0; sys_platform != "win32"
 openpyxl>=3.1
+psycopg[binary]>=3.2
+ollama>=0.5
+python-dotenv>=1.0

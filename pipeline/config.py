@@ -97,7 +97,32 @@ COL_ACTIVIDAD_PERMITIDA = "Actividad permitida"
 COL_LUGAR = "Lugar"
 
 # --------------------------------------------------------------------------
-# Salidas
+# Entradas por defecto (cuando no se indican en la línea de comandos)
+# --------------------------------------------------------------------------
+DIRECTORIO_DATOS = "data/raw"
+PATRON_PROGRAMA = "Programa*.xlsx"
+PATRON_DICCIONARIO = "Diccionario*.xlsx"
+
+# --------------------------------------------------------------------------
+# Base de datos (PostgreSQL)
+# --------------------------------------------------------------------------
+VAR_URL_BD = "DATABASE_URL"  # variable de entorno con la URL de conexión
+
+TABLA_EVENTOS = "eventos"
+TABLA_RECHAZADOS = "registros_rechazados"
+TABLA_BITACORA = "bitacora_limpieza"
+TABLA_REPORTE = "reporte_validacion"
+
+# Hoja del reporte de validación y sus encabezados -> columnas de la tabla
+HOJA_REPORTE = "validacion"
+RENOMBRAR_REPORTE = {
+    "Validación": "validacion",
+    "Antes de limpieza": "antes_de_limpieza",
+    "Después de limpieza": "despues_de_limpieza",
+}
+
+# --------------------------------------------------------------------------
+# Salidas en archivos
 # --------------------------------------------------------------------------
 ARCHIVO_PROCESADOS = "datos_procesados.xlsx"
 ARCHIVO_RECHAZADOS = "registros_rechazados.xlsx"
