@@ -4,12 +4,71 @@ on:
   push:
   pull_request:
 
+# Sistemas soportados: Windows y Fedora. El trabajo en Ubuntu comprueba además
+# la versión mínima de Python.
 jobs:
-  pytest:
+  fedora:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: semana_ingenieria
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      # dentro de un contenedor, el servicio se alcanza por su nombre
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/semana_ingenieria
+    steps:
+      - uses: actions/checkout@v4
+      - run: dnf install -y python3 python3-pip
+      - run: python3 -m venv .venv
+      - run: .venv/bin/pip install -r requirements-dev.txt
+      - run: .venv/bin/pytest -q
+
+  windows:
+    runs-on: windows-latest
+    env:
+      DATABASE_URL: postgresql://postgres:root@localhost:5432/postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # La imagen de GitHub trae PostgreSQL instalado pero detenido (usuario postgres, clave root)
+      - name: Iniciar PostgreSQL
+        run: |
+          $servicio = Get-Service -Name postgresql*
+          Set-Service -InputObject $servicio -StartupType Manual
+          Start-Service -InputObject $servicio
+      - run: pip install -r requirements-dev.txt
+      - run: pytest -q
+
+  ubuntu:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.10", "3.12"]
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: semana_ingenieria
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/semana_ingenieria
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

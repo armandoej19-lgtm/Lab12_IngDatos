@@ -12,6 +12,13 @@ output/
 data/raw/*
 !data/raw/.gitkeep
 
+# Configuración local: contiene la contraseña de PostgreSQL (ver .env.example)
+.env
+
+# Claude Code: configuración y archivos locales del asistente
+.claude/
+CLAUDE.local.md
+
 # Sistema / editores
 .DS_Store
 Thumbs.db

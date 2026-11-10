@@ -1,0 +1,3 @@
+# Finales de línea LF en el repositorio y en la copia de trabajo, tanto en Windows como en Linux
+* text=auto eol=lf
+*.xlsx binary
