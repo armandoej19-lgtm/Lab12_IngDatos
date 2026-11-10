@@ -1,30 +1,35 @@
 """Etapa 5: Limpieza.
 
-La limpieza CORRIGE valores cuando la corrección es determinística y nunca
-elimina registros: lo que no se puede corregir lo rechaza la etapa 6.
-Cada celda modificada queda registrada en una bitácora.
+Trata los problemas que identificó la validación (etapa 4). Cada tratamiento
+se aplica a los registros que la validación marcó; aquí no se vuelve a evaluar
+ninguna regla.
+
+    Problema identificado          Tratamiento
+    vacios, espacios_sobrantes     se quitan los espacios de más; el texto vacío pasa a nulo
+    actividad_fuera_de_catalogo    nombre de sede -> actividad del catálogo
+    salon_fuera_de_catalogo        salón con descripción extra o escrito distinto -> nombre del catálogo
+    enlace_invalido                enlace que no es de Teams -> nulo
+    maestro_igual_a_ponente        se conserva como ponente; el maestro de ceremonias pasa a nulo
+
+La limpieza corrige solo cuando la corrección es determinística y nunca
+elimina registros: lo que no tiene corrección segura lo separa la selección
+(etapa 6). Cada celda modificada queda registrada en una bitácora.
 """
 
 import logging
-import re
 
 import numpy as np
 import pandas as pd
 
 from . import config
+from .conversion import columnas_de_texto, fila_excel, normalizar_espacios
+from .validacion import Validacion
 
 log = logging.getLogger(__name__)
 
 
-def _normalizar_texto(valor):
-    """Quita espacios extremos y dobles; los textos vacíos pasan a nulo."""
-    if isinstance(valor, str):
-        limpio = re.sub(r"\s+", " ", valor).strip()
-        return limpio if limpio else np.nan
-    return valor
-
-
-def _limpiar_salon(salon: pd.Series) -> pd.Series:
+def _nombre_de_catalogo(salon: pd.Series) -> pd.Series:
+    """Deja el salón como aparece en el catálogo: sin descripción extra y con su nombre oficial."""
     salon = salon.copy()
     con_valor = salon.notna()
     salon[con_valor] = salon[con_valor].astype(str).str.replace(config.PATRON_SALON, r"\1", regex=True)
@@ -41,7 +46,7 @@ def _bitacora(antes: pd.DataFrame, despues: pd.DataFrame) -> pd.DataFrame:
         cambio = ~((a == d) | (a.isna() & d.isna()))
         for idx in cambio[cambio].index:
             filas.append({
-                "fila_excel": idx + 2,  # +1 por el encabezado y +1 porque Excel cuenta desde 1
+                "fila_excel": fila_excel(idx),
                 "columna": col,
                 "valor_original": a[idx],
                 "valor_limpio": d[idx],
@@ -50,34 +55,27 @@ def _bitacora(antes: pd.DataFrame, despues: pd.DataFrame) -> pd.DataFrame:
     return bitacora.sort_values("fila_excel", kind="mergesort").reset_index(drop=True)
 
 
-def limpieza(df: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame]:
-    """Devuelve (df_limpio, bitacora). Conserva el índice original de cada registro."""
+def limpieza(df: pd.DataFrame, validacion: Validacion) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Devuelve (df_limpio, bitacora). Conserva el índice original de cada registro.
+
+    validacion: resultado de la etapa 4 sobre este mismo `df`.
+    """
+    marcados = validacion.reglas
     original = df.copy()
     df = df.copy()
 
-    # 1. Espacios extremos/dobles y textos vacíos -> nulo (incluye empresa vacía)
-    for col in df.columns:
-        if pd.api.types.is_object_dtype(df[col]) or pd.api.types.is_string_dtype(df[col]):
-            df[col] = df[col].map(_normalizar_texto)
+    con_espacios = marcados["vacios"] | marcados["espacios_sobrantes"]
+    for col in columnas_de_texto(df):
+        df.loc[con_espacios, col] = df.loc[con_espacios, col].map(normalizar_espacios)
 
-    # 2. Actividades con nombre de sede -> actividad del catálogo
-    df["Actividad"] = df["Actividad"].replace(config.MAPEO_ACTIVIDAD)
+    actividad = marcados["actividad_fuera_de_catalogo"]
+    df.loc[actividad, "Actividad"] = df.loc[actividad, "Actividad"].replace(config.MAPEO_ACTIVIDAD)
 
-    # 3. Tipo en minúsculas (presencial / virtual)
-    df["Tipo"] = df["Tipo"].astype("string").str.lower().astype(object).where(df["Tipo"].notna(), np.nan)
+    salon = marcados["salon_fuera_de_catalogo"]
+    df.loc[salon, "Salón"] = _nombre_de_catalogo(df.loc[salon, "Salón"])
 
-    # 4. Salones con descripción extra -> nombre del catálogo
-    df["Salón"] = _limpiar_salon(df["Salón"])
-
-    # 5. Enlaces que no son de Teams -> nulo
-    enlace_invalido = df["Enlace"].notna() & ~df["Enlace"].astype("string").str.match(config.PATRON_TEAMS).fillna(False)
-    df.loc[enlace_invalido, "Enlace"] = np.nan
-
-    # 6. Maestro de ceremonias repetido como ponente -> nulo
-    ponente = df["Ponente"].astype("string").str.strip().str.lower()
-    maestro = df["Maestro de ceremonias"].astype("string").str.strip().str.lower()
-    repetido = ponente.notna() & ponente.eq(maestro).fillna(False)
-    df.loc[repetido, "Maestro de ceremonias"] = np.nan
+    df.loc[marcados["enlace_invalido"], "Enlace"] = np.nan
+    df.loc[marcados["maestro_igual_a_ponente"], "Maestro de ceremonias"] = np.nan
 
     bitacora = _bitacora(original, df)
     log.info("Limpieza: %d celdas corregidas en %d registros",

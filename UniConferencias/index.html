@@ -28,6 +28,23 @@
       <p>Explora las conferencias de tu universidad, descubre nuevos temas y organiza tu horario.</p>
     </section>
 
+    <section class="assistant-section" aria-label="Asistente">
+      <label for="question" class="search-label">Pregúntale al asistente</label>
+      <form class="search-box" id="assistant-form">
+        <span class="search-icon" aria-hidden="true">✦</span>
+        <input type="text" id="question" placeholder="Ej.: ¿Qué conferencias hay entre las 10 y las 12?" autocomplete="off" maxlength="500">
+        <button type="submit" class="search-button" id="ask-button">Preguntar</button>
+      </form>
+      <div class="assistant-answer" id="assistant-answer" role="status" hidden>
+        <p class="assistant-text" id="assistant-text"></p>
+        <pre class="assistant-detail" id="assistant-detail" hidden></pre>
+        <div class="assistant-meta">
+          <span id="assistant-search"></span>
+          <button type="button" class="clear-filters" id="assistant-clear" hidden>Ver todas las conferencias</button>
+        </div>
+      </div>
+    </section>
+
     <section class="search-section" aria-label="Buscar conferencias">
       <label for="search" class="search-label">Buscar conferencias</label>
       <div class="search-box">

@@ -57,3 +57,12 @@ def url_bd():
             yield make_conninfo(base, options=f"-c search_path={esquema}")
         finally:
             conn.execute(f'DROP SCHEMA "{esquema}" CASCADE')
+
+
+@pytest.fixture
+def bd_con_muestra(rutas_muestra, tmp_path, url_bd):
+    """URL de una base con los datos de muestra ya cargados por el pipeline completo."""
+    from main import ejecutar
+
+    assert ejecutar(*rutas_muestra, tmp_path / "out", url_bd) == 0
+    return url_bd

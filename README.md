@@ -2,35 +2,40 @@
 
 Pipeline en Python que toma el programa de actividades de la Semana de Ingeniería (Excel) y lo valida, limpia, filtra y transforma usando como referencia el diccionario de datos del evento. Al final guarda los **datos procesados** y los **registros rechazados** en PostgreSQL y en archivos Excel.
 
-Sobre esa base de datos trabaja un **agente** con modelos locales de Ollama que responde preguntas en español sobre el programa: qué conferencias hay en un horario, cuáles se relacionan con un tema, qué tipos de actividad existen.
+Sobre esa base de datos trabaja un **agente** con modelos locales de Ollama que responde preguntas en español sobre el programa: qué conferencias hay en un horario, cuáles se relacionan con un tema, qué tipos de actividad existen. La **página web** `UniConferencias` muestra el programa y permite preguntarle al agente.
 
 Proyecto del *Laboratorio 12: Implementación de un Pipeline de Datos en Python*. Funciona en **Windows** y en **Fedora Linux**.
 
 ```
-data/raw/*.xlsx ──> pipeline (8 etapas) ──> PostgreSQL ──> agente (Ollama) ──> respuestas
+data/raw/*.xlsx ──> pipeline (8 etapas) ──> PostgreSQL ──> servidor web ──> página UniConferencias
+                                        │                  (API + agente con Ollama)
                                         └─> output/*.xlsx
 ```
 
+Hay un solo pipeline. La página no procesa datos por su cuenta: los pide al servidor, que los lee de PostgreSQL.
+
 ## Etapas
+
+Cada etapa hace lo que le corresponde y entrega su resultado a la siguiente; ninguna repite el trabajo de otra.
 
 | # | Etapa | Módulo | Qué hace |
 |---|---|---|---|
 | 1 | Carga | `pipeline/carga.py` | Lee el programa y el diccionario de datos (layout y catálogos). |
 | 2 | Validación de carga | `pipeline/carga.py` | Comprueba que el archivo se leyó sin errores y que no está vacío. |
 | 3 | Validación del layout | `pipeline/layout.py` | Revisa nombres de columnas, columnas requeridas y tipos de datos contra el diccionario. Si faltan columnas, se detiene. |
-| 4 | Validación de información | `pipeline/validacion.py` | Cuenta los registros que incumplen cada regla: duplicados, nulos, vacíos, formatos, rangos, catálogos y reglas entre campos. |
-| 5 | Limpieza | `pipeline/limpieza.py` | Corrige lo que tiene corrección segura y registra cada cambio en una bitácora. |
-| 6 | Selección | `pipeline/seleccion.py` | Conserva los registros que cumplen todas las reglas y separa los demás con su motivo de rechazo. |
-| 7 | Transformación | `pipeline/transformacion.py` | Aplica el esquema de salida: nombres estándar, tipos, atributos derivados, orden e identificador. |
-| 8 | Almacenamiento | `pipeline/almacenamiento.py` | Guarda procesados, rechazados, bitácora y reporte en PostgreSQL y en Excel, y verifica la escritura releyendo lo guardado. |
+| 4 | Validación de información | `pipeline/validacion.py` | Identifica y registra los incumplimientos: duplicados, nulos, vacíos, formatos, rangos, catálogos y reglas entre campos. Es la única etapa que evalúa reglas. |
+| 5 | Limpieza | `pipeline/limpieza.py` | Trata los problemas que marcó la etapa 4, cuando tienen corrección segura, y anota cada cambio en una bitácora. |
+| 6 | Selección | `pipeline/seleccion.py` | Conserva los registros sin incumplimientos y los atributos del diseño; separa los demás con su motivo de rechazo. |
+| 7 | Transformación | `pipeline/transformacion.py` | Aplica el esquema de salida: nombres estándar, tipos y formato, atributos derivados, orden e identificador. |
+| 8 | Almacenamiento | `pipeline/almacenamiento.py` | Guarda por separado procesados y rechazados (con la bitácora y el reporte) en PostgreSQL y en Excel, y verifica la escritura releyendo lo guardado. |
 
 Los parámetros del evento (rango de fechas y horas, patrón de enlaces, mapeos de limpieza, nombres de hojas y de tablas) están en `pipeline/config.py`.
 
 ## Decisiones de diseño
 
-- **Las reglas se escriben una sola vez.** `reglas_por_registro()` devuelve una máscara booleana por regla. La etapa 4 la usa para el reporte y la etapa 6 para decidir qué registros se rechazan.
-- **La limpieza corrige y la selección decide.** La limpieza nunca borra registros: solo corrige valores cuando la corrección es segura, por ejemplo `CUAUH` → `Concurso` o `"CUAUH A 108 - Audiovisual"` → `"CUAUH A 108"`. Lo que no se puede corregir sin adivinar, como una hora fin anterior a la hora inicio, se rechaza en la selección.
-- **Nada se pierde en silencio.** Cada rechazo indica la fila del Excel, sus valores originales y el motivo. Cada corrección queda en la bitácora con su valor antes y después.
+- **Las reglas se escriben y se evalúan en un solo lugar.** `validacion_de_informacion()` devuelve una máscara booleana por regla, el resumen de totales y el detalle por registro. La limpieza y la selección trabajan con ese resultado; no vuelven a revisar los datos por su cuenta.
+- **La limpieza trata, la selección decide.** La limpieza nunca borra registros: corrige lo que la validación marcó cuando la corrección es segura, por ejemplo `CUAUH` → `Concurso` o `"CUAUH A 108 - Audiovisual"` → `"CUAUH A 108"`. Después se valida de nuevo, y lo que siga incumpliendo (como una hora fin anterior a la hora inicio, que no se puede corregir sin adivinar) lo separa la selección.
+- **Nada se pierde en silencio.** Cada incumplimiento queda registrado con su fila del Excel. Cada corrección queda en la bitácora con su valor antes y después. Cada rechazo indica la fila, sus valores originales y el motivo.
 - **La base de datos es neutral.** Las tablas del programa solo usan tipos estándar de PostgreSQL y no dependen del agente: cualquier aplicación puede consultarlas. Lo que es propio del agente vive en dos tablas aparte.
 - **Los datos los pone la base, no el modelo.** El modelo interpreta la pregunta y redacta una respuesta breve, pero los eventos se buscan con SQL y tanto el listado como las cifras los escribe el programa. Un título, un horario, un salón o un total nunca dependen de lo que escriba el modelo.
 
@@ -46,13 +51,16 @@ Los parámetros del evento (rango de fechas y horas, patrón de enlaces, mapeos 
 | `salon_fuera_de_catalogo` | Salón que no aparece en *Catálogo Salon*. |
 | `formato_fecha` / `formato_hora` | Fecha distinta de `YYYY-MM-DD`, u hora distinta de `HH:MM`. |
 | `enlace_invalido` | Enlace que no es de Microsoft Teams. |
+| `espacios_sobrantes` | Texto con espacios al inicio, al final o repetidos. |
 | `fecha_fuera_de_rango` | Fecha fuera del 20 al 25 de septiembre de 2026. |
 | `hora_fuera_de_rango` | Hora fuera de 08:00 a 22:00. |
 | `fecha_inicio_mayor_a_fin` / `hora_inicio_no_menor_a_fin` | Orden incorrecto entre inicio y fin. |
 | `virtual_sin_enlace` / `presencial_sin_salon` | Reglas entre el tipo de evento y sus campos. |
-| `titulo_vacio` | Título vacío. |
 | `maestro_igual_a_ponente` | El maestro de ceremonias es la misma persona que el ponente. |
-| `empresa_vacia` | Empresa / Institución con solo espacios. |
+
+Un título vacío o una empresa con solo espacios no tienen regla propia: ya los cubren `nulos` y `vacios`.
+
+Qué hace la limpieza con cada problema: quita los espacios de más y deja en nulo el texto vacío (`vacios`, `espacios_sobrantes`); cambia el nombre de sede por la actividad del catálogo (`actividad_fuera_de_catalogo`); deja el salón con su nombre de catálogo (`salon_fuera_de_catalogo`); anula el enlace que no es de Teams (`enlace_invalido`) y el maestro de ceremonias repetido (`maestro_igual_a_ponente`). Las demás reglas no tienen corrección segura.
 
 ## Estructura
 
@@ -63,6 +71,8 @@ pipeline-semana-ingenieria/
 │   ├── bd.py                   # conexión y carga en PostgreSQL
 │   └── esquema.sql             # tablas de la base de datos
 ├── agente/                     # agente de preguntas y respuestas (Ollama)
+│   └── servidor.py             # API web del agente; también sirve la página
+├── UniConferencias/            # página web (HTML, CSS y JavaScript)
 ├── scripts/
 │   ├── crear_bd.py             # crea el rol y la base de datos
 │   └── generar_datos_muestra.py
@@ -195,11 +205,31 @@ Reto y Oportunidad del Siglo XXI».
 
 La última línea muestra cómo se entendió la pregunta, para poder reformularla si no era eso.
 
+**Página web.** Con el pipeline ya ejecutado, inicia el servidor y abre `http://localhost:8000`:
+
+```bash
+python -m agente.servidor
+```
+
+El servidor entrega la página y la API juntas. Al arrancar deja listo el agente (comprueba Ollama y genera los vectores que falten); si Ollama o PostgreSQL no están disponibles, la página lo indica. La primera pregunta después de un rato sin uso tarda más, porque Ollama vuelve a cargar el modelo en memoria. Para usar otro puerto: `python -m agente.servidor --puerto 8080`.
+
+| Ruta | Qué devuelve |
+|---|---|
+| `GET /api/eventos` | El programa completo, con los campos que usa la página. |
+| `POST /api/agente` | Recibe `{"pregunta": "..."}` y devuelve `respuesta` (texto del agente), `busqueda` (cómo se entendió), `eventos` (los encontrados, hasta 30), `total` y `detalle` (las cifras del programa, en preguntas generales). |
+| `GET /docs` | Documentación interactiva de la API. |
+
+```bash
+curl -X POST http://localhost:8000/api/agente -H "Content-Type: application/json" -d '{"pregunta": "que talleres hay el martes"}'
+```
+
+La petición debe ir en UTF-8. La página y cualquier programa lo hacen así; desde la terminal de Windows los acentos se envían en otra codificación y el servidor responde con un error 400.
+
 ## Salidas
 
 ### Base de datos (PostgreSQL)
 
-Cada ejecución reemplaza el contenido de las cuatro tablas del programa en una sola transacción: o se guardan todas o ninguna.
+Cada ejecución reemplaza el contenido de las cinco tablas del programa en una sola transacción: o se guardan todas o ninguna.
 
 | Tabla | Contenido |
 |---|---|
@@ -207,10 +237,11 @@ Cada ejecución reemplaza el contenido de las cuatro tablas del programa en una 
 | `registros_rechazados` | Registros rechazados con sus valores originales (texto), `fila_excel` y `motivo_rechazo`. |
 | `bitacora_limpieza` | Cada celda corregida, con su valor original y su valor limpio. |
 | `reporte_validacion` | Errores por regla, antes y después de la limpieza. |
+| `incumplimientos_validacion` | Detalle de la validación de los datos originales: una fila por cada regla que incumple cada registro. |
 | `agente_vectores` | Vector (embedding) del título y la clase de actividad de cada evento, guardado como `real[]`. Se borra con su evento y el agente lo regenera al iniciar. |
 | `agente_interacciones` | Historial del agente: pregunta, filtros que interpretó, eventos mostrados, respuesta, modelo y duración. No se borra al recargar el programa. |
 
-Las cuatro primeras son neutrales: no requieren extensiones y sirven a cualquier aplicación (reportes, una página web, otro análisis). Por ejemplo:
+Las cinco primeras son neutrales: no requieren extensiones y sirven a cualquier aplicación. La página web es una de ellas: lee `eventos` a través de la API. Por ejemplo:
 
 ```sql
 SELECT titulo, hora_inicio, hora_fin, salon
@@ -226,7 +257,7 @@ ORDER BY fecha_inicio, hora_inicio;
 | `datos_procesados.xlsx` | Lo mismo que la tabla `eventos`. |
 | `registros_rechazados.xlsx` | Registros rechazados con todas las columnas del Excel original. Se escribe aunque esté vacío. |
 | `bitacora_limpieza.xlsx` | Cada celda corregida, con su valor original y su valor limpio. |
-| `reporte_validacion.xlsx` | Errores por regla, antes y después de la limpieza. |
+| `reporte_validacion.xlsx` | Dos hojas: `validacion`, con los errores por regla antes y después de la limpieza, e `incumplimientos`, con el detalle por fila del Excel. |
 | `pipeline.log` | Registro de la ejecución. |
 
 ## Agente
@@ -268,6 +299,6 @@ Los modelos y los límites de búsqueda están en `agente/config.py`. Los modelo
 pytest -q
 ```
 
-Las pruebas cubren cada etapa, el pipeline completo con los datos de muestra y el agente (con un modelo simulado, para probar la lógica del programa sin depender de Ollama). Las que necesitan PostgreSQL usan la base de `DATABASE_URL` dentro de un esquema temporal que se borra al terminar, así que no tocan las tablas reales; si no hay base de datos disponible, se omiten.
+Las pruebas cubren cada etapa, el pipeline completo con los datos de muestra, el agente y su servicio web (con un modelo simulado, para probar la lógica del programa sin depender de Ollama). Las que necesitan PostgreSQL usan la base de `DATABASE_URL` dentro de un esquema temporal que se borra al terminar, así que no tocan las tablas reales; si no hay base de datos disponible, se omiten.
 
 GitHub Actions las corre en cada push en un contenedor de Fedora, en Windows y en Ubuntu (`.github/workflows/tests.yml`).

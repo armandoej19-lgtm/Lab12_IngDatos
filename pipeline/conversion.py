@@ -3,9 +3,39 @@
 Excel puede entregar una fecha como texto ("2026-09-20") o como Timestamp,
 y una hora como texto ("10:00") o como datetime.time. Estas funciones
 aceptan ambos casos y devuelven NaT cuando el valor no es válido.
+
+Son las utilidades que comparten las etapas: cada criterio (qué es una fecha
+válida, qué es un texto vacío o con espacios de más) se define aquí una vez.
 """
 
+import re
+
+import numpy as np
 import pandas as pd
+
+
+def fila_excel(indice):
+    """Fila del Excel de origen: +1 por el encabezado y +1 porque Excel cuenta desde 1."""
+    return indice + 2
+
+
+def columnas_de_texto(df: pd.DataFrame) -> list:
+    """Columnas cuyo contenido es texto."""
+    return [c for c in df.columns
+            if pd.api.types.is_object_dtype(df[c]) or pd.api.types.is_string_dtype(df[c])]
+
+
+def normalizar_espacios(valor):
+    """Quita los espacios de los extremos y los repetidos; un texto vacío pasa a nulo."""
+    if isinstance(valor, str):
+        limpio = re.sub(r"\s+", " ", valor).strip()
+        return limpio if limpio else np.nan
+    return valor
+
+
+def tiene_espacios_sobrantes(serie: pd.Series) -> pd.Series:
+    """True si el texto cambiaría al normalizar sus espacios (no cuenta nulos ni textos vacíos)."""
+    return serie.map(lambda v: isinstance(v, str) and v.strip() != "" and v != normalizar_espacios(v)).astype(bool)
 
 
 def a_fecha(serie: pd.Series) -> pd.Series:

@@ -1,7 +1,7 @@
 """Etapa 8: Almacenamiento.
 
-Guarda los datos procesados, los registros rechazados, la bitácora de limpieza
-y el reporte de validación en dos destinos:
+Guarda por separado los datos procesados y los registros rechazados, junto con
+la bitácora de limpieza y el reporte de validación, en dos destinos:
 
 - Archivos Excel en la carpeta de salida.
 - PostgreSQL: tablas neutrales que puede consultar cualquier aplicación y de
@@ -82,16 +82,22 @@ def _tablas(df_procesados, df_rechazados, df_bitacora, reportes) -> dict[str, pd
         df_bitacora = pd.DataFrame(columns=["fila_excel", "columna", "valor_original", "valor_limpio"])
     bitacora = _como_texto(df_bitacora, ["valor_original", "valor_limpio"])
 
-    reporte = (reportes or {}).get(config.HOJA_REPORTE)
+    reportes = reportes or {}
+    reporte = reportes.get(config.HOJA_REPORTE)
     if reporte is None:
         reporte = pd.DataFrame(columns=list(config.RENOMBRAR_REPORTE))
     reporte = reporte.rename(columns=config.RENOMBRAR_REPORTE)
+
+    incumplimientos = reportes.get(config.HOJA_INCUMPLIMIENTOS)
+    if incumplimientos is None:
+        incumplimientos = pd.DataFrame(columns=["fila_excel", "regla"])
 
     return {
         config.TABLA_EVENTOS: eventos,
         config.TABLA_RECHAZADOS: rechazados,
         config.TABLA_BITACORA: bitacora,
         config.TABLA_REPORTE: reporte,
+        config.TABLA_INCUMPLIMIENTOS: incumplimientos,
     }
 
 

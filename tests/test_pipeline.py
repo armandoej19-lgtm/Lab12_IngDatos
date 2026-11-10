@@ -43,10 +43,23 @@ def test_layout_detecta_columna_faltante_y_adicional(df, diccionario):
     assert not resultado.estructura_valida
 
 
+def _limpiar(df, diccionario):
+    """Etapas 4 y 5: valida y limpia."""
+    return limpieza(df, validacion_de_informacion(df, diccionario))
+
+
+def _seleccionar(df, diccionario):
+    """Etapas 4 a 6: valida, limpia, valida lo limpio y selecciona."""
+    limpio, _ = _limpiar(df, diccionario)
+    return seleccion(limpio, validacion_de_informacion(limpio, diccionario), df_original=df)
+
+
 # --- Etapa 4 ----------------------------------------------------------------
-def test_validacion_detecta_incumplimientos(df, diccionario):
-    errores = validacion_de_informacion(df, diccionario).set_index("Validación")["Total Errores"]
+def test_validacion_identifica_los_incumplimientos(df, diccionario):
+    errores = validacion_de_informacion(df, diccionario).reporte.set_index("Validación")["Total Errores"]
     assert errores["duplicados"] == 1
+    assert errores["vacios"] == 1                      # empresa con solo espacios
+    assert errores["espacios_sobrantes"] == 1          # título con espacios dobles
     assert errores["fecha_fuera_de_rango"] == 1
     assert errores["hora_inicio_no_menor_a_fin"] == 1
     assert errores["virtual_sin_enlace"] == 1
@@ -54,49 +67,66 @@ def test_validacion_detecta_incumplimientos(df, diccionario):
     assert errores["maestro_igual_a_ponente"] == 1
 
 
+def test_validacion_registra_cada_incumplimiento(df, diccionario):
+    validacion = validacion_de_informacion(df, diccionario)
+    detalle = validacion.incumplimientos
+    assert list(detalle.columns) == ["fila_excel", "regla"]
+    assert len(detalle) == validacion.reporte["Total Errores"].sum()   # el detalle y el resumen coinciden
+    assert detalle.loc[detalle["fila_excel"] == 9, "regla"].tolist() == ["fecha_fuera_de_rango"]
+    # un registro puede incumplir varias reglas: sin título y con un tipo que no existe
+    assert detalle.loc[detalle["fila_excel"] == 14, "regla"].tolist() == ["nulos", "tipo_invalido"]
+    assert detalle["fila_excel"].is_monotonic_increasing
+
+
 # --- Etapa 5 ----------------------------------------------------------------
-def test_limpieza_corrige_sin_eliminar_registros(df):
-    limpio, bitacora = limpieza(df)
-    assert len(limpio) == len(df)
+def test_limpieza_trata_lo_que_marco_la_validacion(df, diccionario):
+    limpio, bitacora = _limpiar(df, diccionario)
+    assert len(limpio) == len(df)                              # nunca elimina registros
     assert limpio.loc[2, "Actividad"] == "Concurso"            # CUAUH -> Concurso
     assert limpio.loc[2, "Salón"] == "CUAUH A 108"             # se recorta la descripción
     assert limpio.loc[4, "Salón"] == "Cancha de Basketball"
     assert limpio.loc[3, "Título"] == "Concurso de Programación"
-    assert limpio.loc[3, "Tipo"] == "presencial"
     assert pd.isna(limpio.loc[3, "Maestro de ceremonias"])    # era igual al ponente
     assert pd.isna(limpio.loc[4, "Enlace"])                    # enlace que no es de Teams
     assert pd.isna(limpio.loc[5, "Empresa / Institución"])     # solo espacios
-    assert not bitacora.empty
+    # cada cambio queda en la bitácora con su valor original
+    cambio = bitacora[(bitacora["fila_excel"] == 4) & (bitacora["columna"] == "Actividad")].iloc[0]
+    assert (cambio["valor_original"], cambio["valor_limpio"]) == ("CUAUH", "Concurso")
+
+
+def test_limpieza_no_toca_lo_que_la_validacion_no_marco(df, diccionario):
+    limpio, bitacora = _limpiar(df, diccionario)
+    pd.testing.assert_frame_equal(limpio.loc[[0, 1]], df.loc[[0, 1]], check_dtype=False)
+    assert not bitacora["fila_excel"].isin([2, 3]).any()
+    assert limpio.loc[3, "Tipo"] == "Presencial"               # es formato: lo normaliza la etapa 7
 
 
 # --- Etapa 6 ----------------------------------------------------------------
 def test_seleccion_separa_aceptados_y_rechazados(df, diccionario):
-    limpio, _ = limpieza(df)
-    sel, rech = seleccion(limpio, diccionario, df_original=df)
+    sel, rech = _seleccionar(df, diccionario)
     assert len(sel) == FILAS_VALIDAS
     assert len(rech) == FILAS_RECHAZADAS
     assert rech["motivo_rechazo"].str.len().gt(0).all()
     assert rech.loc[rech["fila_excel"] == 9, "motivo_rechazo"].item() == "fecha_fuera_de_rango"
+    assert rech.loc[rech["fila_excel"] == 13, "motivo_rechazo"].item() == "salon_fuera_de_catalogo; hora_fuera_de_rango"
     # los rechazados conservan el valor original del Excel
     assert "Hackatón" in rech["Actividad"].tolist()
 
 
-def test_datos_limpios_cumplen_todas_las_reglas(df, diccionario):
-    limpio, _ = limpieza(df)
-    sel, _ = seleccion(limpio, diccionario)
-    errores = validacion_de_informacion(sel, diccionario)
-    assert errores["Total Errores"].sum() == 0
+def test_datos_seleccionados_cumplen_todas_las_reglas(df, diccionario):
+    sel, _ = _seleccionar(df, diccionario)
+    assert validacion_de_informacion(sel, diccionario).reporte["Total Errores"].sum() == 0
 
 
 # --- Etapa 7 ----------------------------------------------------------------
 def test_transformacion_aplica_esquema(df, diccionario):
-    limpio, _ = limpieza(df)
-    sel, _ = seleccion(limpio, diccionario)
+    sel, _ = _seleccionar(df, diccionario)
     final = transformacion(sel)
     assert final.columns[0] == "id_evento"
     assert {"fecha_inicio", "hora_inicio", "salon", "duracion_horas", "num_dias", "dia_semana"} <= set(final.columns)
     assert pd.api.types.is_datetime64_any_dtype(final["fecha_inicio"])
     assert final["fecha_inicio"].is_monotonic_increasing
+    assert set(final["tipo"]) == {"presencial", "virtual"}     # "Presencial" quedó en minúsculas
     primera = final.iloc[0]
     assert (primera["duracion_horas"], primera["dia_semana"]) == (2.0, "Domingo")
     assert pd.isna(primera["salon"])                            # virtual: '—' -> nulo

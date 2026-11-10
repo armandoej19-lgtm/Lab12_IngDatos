@@ -112,9 +112,12 @@ TABLA_EVENTOS = "eventos"
 TABLA_RECHAZADOS = "registros_rechazados"
 TABLA_BITACORA = "bitacora_limpieza"
 TABLA_REPORTE = "reporte_validacion"
+TABLA_INCUMPLIMIENTOS = "incumplimientos_validacion"
 
-# Hoja del reporte de validación y sus encabezados -> columnas de la tabla
+# Hojas del reporte de validación: el resumen por regla y el detalle por registro.
+# Los encabezados del resumen se renombran a las columnas de su tabla.
 HOJA_REPORTE = "validacion"
+HOJA_INCUMPLIMIENTOS = "incumplimientos"
 RENOMBRAR_REPORTE = {
     "Validación": "validacion",
     "Antes de limpieza": "antes_de_limpieza",

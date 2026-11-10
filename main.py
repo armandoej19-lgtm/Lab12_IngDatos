@@ -62,24 +62,26 @@ def ejecutar(ruta_datos, ruta_diccionario, directorio_salida, url_bd: str | None
         return 1
 
     log.info("=== ETAPA 4: VALIDACIÓN DE INFORMACIÓN ===")
-    reporte_antes = validacion_de_informacion(df, diccionario)
+    validacion = validacion_de_informacion(df, diccionario)
 
     log.info("=== ETAPA 5: LIMPIEZA ===")
-    df_limpio, bitacora = limpieza(df)
-    reporte_despues = validacion_de_informacion(df_limpio, diccionario)
+    df_limpio, bitacora = limpieza(df, validacion)
+    # Se valida de nuevo lo ya limpio: lo que siga incumpliendo no tuvo corrección segura
+    pendientes = validacion_de_informacion(df_limpio, diccionario)
 
     log.info("=== ETAPA 6: SELECCIÓN ===")
-    df_sel, df_rechazados = seleccion(df_limpio, diccionario, df_original=df)
+    df_sel, df_rechazados = seleccion(df_limpio, pendientes, df_original=df)
 
     log.info("=== ETAPA 7: TRANSFORMACIÓN ===")
     df_final = transformacion(df_sel)
 
     log.info("=== ETAPA 8: ALMACENAMIENTO ===")
-    reporte = reporte_antes.rename(columns={"Total Errores": "Antes de limpieza"})
-    reporte["Después de limpieza"] = reporte_despues["Total Errores"]
+    reporte = validacion.reporte.rename(columns={"Total Errores": "Antes de limpieza"})
+    reporte["Después de limpieza"] = pendientes.reporte["Total Errores"]
+    reportes = {config.HOJA_REPORTE: reporte, config.HOJA_INCUMPLIMIENTOS: validacion.incumplimientos}
     try:
         almacenamiento(df_final, df_rechazados, salida, df_bitacora=bitacora,
-                       reportes={config.HOJA_REPORTE: reporte}, url_bd=url_bd)
+                       reportes=reportes, url_bd=url_bd)
     except psycopg.Error as error:
         log.error("No se pudo guardar en PostgreSQL (los archivos sí se escribieron): %s", error)
         return 1

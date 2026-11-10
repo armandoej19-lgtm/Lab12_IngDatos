@@ -81,9 +81,10 @@ Recibes una pregunta y los datos que se encontraron en la base de datos del prog
 class Respuesta:
     pregunta: str
     consulta: Consulta
-    eventos: list[dict]     # resultados, ya ordenados
+    eventos: list[dict]     # resultados que se muestran, ya ordenados
     texto: str              # lo que redactó el modelo
-    listado: str            # eventos formateados por el programa (vacío si no aplica)
+    listado: str            # eventos o cifras formateados por el programa (vacío si no aplica)
+    total: int = 0          # eventos encontrados; puede ser mayor que los que se muestran
 
     @property
     def completa(self) -> str:
@@ -346,7 +347,8 @@ class Agente:
         texto = (self.modelo.redactar(INSTRUCCIONES_REDACTOR, "\n".join(datos))
                  or f"Encontré {len(eventos)} eventos ({consulta.descripcion()}).")
         mostrados = eventos[:config.MAX_LISTADO]
-        return Respuesta(pregunta, consulta, mostrados, texto, formatear_listado(mostrados, len(eventos)))
+        return Respuesta(pregunta, consulta, mostrados, texto, formatear_listado(mostrados, len(eventos)),
+                         total=len(eventos))
 
 
 def _ejemplos(actividades: list[str], fechas: list[date]) -> str:

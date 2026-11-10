@@ -1,7 +1,8 @@
 -- Esquema de la base de datos del programa de la Semana de Ingeniería.
 --
 -- Tablas neutrales (las puede consumir cualquier aplicación):
---     eventos, registros_rechazados, bitacora_limpieza, reporte_validacion
+--     eventos, registros_rechazados, bitacora_limpieza, reporte_validacion,
+--     incumplimientos_validacion
 -- Tablas del agente (ninguna otra aplicación las necesita):
 --     agente_vectores, agente_interacciones
 --
@@ -71,6 +72,14 @@ CREATE TABLE IF NOT EXISTS reporte_validacion (
     cargado_en          timestamptz NOT NULL DEFAULT now()
 );
 COMMENT ON TABLE reporte_validacion IS 'Registros que incumplen cada regla, antes y después de la limpieza.';
+
+CREATE TABLE IF NOT EXISTS incumplimientos_validacion (
+    fila_excel integer NOT NULL,
+    regla      text NOT NULL,
+    cargado_en timestamptz NOT NULL DEFAULT now()
+);
+COMMENT ON TABLE incumplimientos_validacion IS
+    'Detalle de la validación de los datos originales: una fila por cada regla que incumple cada registro.';
 
 -- --------------------------------------------------------------------------
 -- Tablas del agente

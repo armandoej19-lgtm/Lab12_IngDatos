@@ -19,12 +19,13 @@ def transformacion(df: pd.DataFrame) -> pd.DataFrame:
     """Devuelve el DataFrame final listo para almacenarse."""
     df_t = df.rename(columns=config.RENOMBRAR).copy()
 
-    # 1. Tipos: fechas -> datetime, horas -> texto HH:MM
+    # 1. Tipos y formato: fechas -> datetime, horas -> texto HH:MM, modalidad en minúsculas
     df_t["fecha_inicio"] = a_fecha(df_t["fecha_inicio"])
     df_t["fecha_fin"] = a_fecha(df_t["fecha_fin"])
     h_ini, h_fin = a_hora(df_t["hora_inicio"]), a_hora(df_t["hora_fin"])
     df_t["hora_inicio"] = h_ini.dt.strftime("%H:%M")
     df_t["hora_fin"] = h_fin.dt.strftime("%H:%M")
+    df_t["tipo"] = df_t["tipo"].str.lower()
 
     # 2. Eventos virtuales: el marcador '—' en salón pasa a nulo
     df_t.loc[df_t["salon"].astype("string").str.strip().eq(config.SIN_SALON).fillna(False), "salon"] = np.nan

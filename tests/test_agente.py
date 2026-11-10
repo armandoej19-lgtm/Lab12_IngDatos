@@ -21,48 +21,17 @@ import pytest
 
 from agente import Agente, Almacen, SinDatos
 from agente.agente import destacados, formatear_listado, nombra, ordenar_por_similitud
-from agente.consulta import Consulta, a_hora, desde_modelo, emparentadas, esquema, sin_acentos, variantes
-from main import ejecutar
+from agente.consulta import Consulta, a_hora, desde_modelo, emparentadas, esquema, variantes
+from modelo_falso import ModeloFalso
 
 ACTIVIDADES = ["Conferencia", "Conferencia magistral", "Taller", "Concurso", "Deportiva"]
 FECHAS = [date(2026, 9, 21), date(2026, 9, 22)]
 
 
-class ModeloFalso:
-    """Devuelve filtros fijos y vectores que solo dependen de unas palabras clave.
-
-    filtros: lo que "interpreta" de cualquier pregunta.
-    afines:  números de los candidatos que "elige" cuando se le pide filtrar por tema.
-    """
-    chat = "modelo-falso"
-    embeddings = "embeddings-falsos"
-    PALABRAS = ["sensor", "circuito", "programacion", "torneo", "industria"]
-
-    def __init__(self, filtros: dict | None = None, afines: list[int] | None = None):
-        self.filtros = filtros or {}
-        self.afines = afines or []
-        self.candidatos = None      # lista que recibió para filtrar por tema
-        self.datos_recibidos = None  # datos que recibió para redactar
-
-    def interpretar(self, sistema, usuario, esquema):
-        if "relacionados" in esquema["properties"]:
-            self.candidatos = usuario
-            return {"relacionados": self.afines}
-        return self.filtros
-
-    def redactar(self, sistema, usuario):
-        self.datos_recibidos = usuario
-        return "Respuesta de prueba."
-
-    def vectorizar(self, textos):
-        return [[float(palabra in sin_acentos(texto)) for palabra in self.PALABRAS] for texto in textos]
-
-
 @pytest.fixture
-def conn(rutas_muestra, tmp_path, url_bd):
+def conn(bd_con_muestra):
     """Conexión a una base con los datos de muestra ya cargados por el pipeline."""
-    assert ejecutar(*rutas_muestra, tmp_path / "out", url_bd) == 0
-    with psycopg.connect(url_bd, autocommit=True) as conexion:
+    with psycopg.connect(bd_con_muestra, autocommit=True) as conexion:
         yield conexion
 
 
