@@ -1,5 +1,14 @@
 # Pipeline de datos: Semana de Ingeniería
 
+Ficha Técnica de la Clase | Ingeniería de Datos Grupo A
+------------------------------------------------------------
+> Jesús Armando Esparza Jiménez       - 260974  ||
+> Rebecca Araly Araiza López          - 261630  ||
+> Rodrigo Aaron Vásquez Chavarría     - 264620  ||
+> David Yair Martinez Nava            - 262079  ||
+> Kevin Ariel Carbajal Estrada        - 260422  ||
+------------------------------------------------------------
+
 Pipeline en Python que toma el programa de actividades de la Semana de Ingeniería (Excel) y lo valida, limpia, filtra y transforma usando como referencia el diccionario de datos del evento. Al final guarda los **datos procesados** y los **registros rechazados** en PostgreSQL y en archivos Excel.
 
 Sobre esa base de datos trabaja un **agente** con modelos locales de Ollama que responde preguntas en español sobre el programa: qué conferencias hay en un horario, cuáles se relacionan con un tema, qué tipos de actividad existen. La **página web** `UniConferencias` muestra el programa y permite preguntarle al agente.
