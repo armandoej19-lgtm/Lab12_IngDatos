@@ -60,24 +60,94 @@ def normalizar_texto(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", " ", texto).strip()
 
 
-def campus_explicito(evento: dict) -> str:
-    """Devuelve el campus mencionado en los datos o 'No especificado'.
 
-    Se revisan campos descriptivos, pero no 'salon': un código de salón no
-    demuestra a qué campus pertenece. Si aparecen campus distintos, no se
-    elige uno arbitrariamente.
+
+def campus_explicito(evento):
     """
-    campos = ("titulo", "actividad", "ponente", "empresa_institucion", "maestro_ceremonias")
-    texto = " " + " ".join(
-        normalizar_texto(str(evento.get(campo) or "")) for campo in campos
-    ) + " "
+    Obtiene el campus del evento siguiendo este orden:
+    1. Título y actividad.
+    2. Institución.
+    3. Ponente y maestro de ceremonias.
+    4. Prefijo del salón o ubicación.
 
-    encontrados = {
-        campus
-        for campus, alias in ALIAS_CAMPUS.items()
-        if any(f" {normalizar_texto(nombre)} " in texto for nombre in alias)
-    }
-    return encontrados.pop() if len(encontrados) == 1 else "No especificado"
+    Si hay información contradictoria en una misma prioridad,
+    devuelve No especificado.
+    """
+
+    def buscar_campus(campos):
+        texto = " ".join(
+            str(evento.get(campo) or "")
+            for campo in campos
+        )
+
+        texto = f" {normalizar_texto(texto)} "
+
+        encontrados = set()
+
+        for campus, alias in ALIAS_CAMPUS.items():
+            for variante in alias:
+                variante_normalizada = normalizar_texto(variante)
+
+                if f" {variante_normalizada} " in texto:
+                    encontrados.add(campus)
+                    break
+
+        return encontrados
+
+    # Prioridad 1: título y actividad.
+    campus_evento = buscar_campus([
+        "titulo",
+        "actividad"
+    ])
+
+    if len(campus_evento) == 1:
+        return next(iter(campus_evento))
+
+    if len(campus_evento) > 1:
+        return "No especificado"
+
+    # Prioridad 2: institución.
+    campus_institucion = buscar_campus([
+        "empresa_institucion"
+    ])
+
+    if len(campus_institucion) == 1:
+        return next(iter(campus_institucion))
+
+    if len(campus_institucion) > 1:
+        return "No especificado"
+
+    # Prioridad 3: ponente y maestro de ceremonias.
+    campus_personal = buscar_campus([
+        "ponente",
+        "maestro_ceremonias"
+    ])
+
+    if len(campus_personal) == 1:
+        return next(iter(campus_personal))
+
+    if len(campus_personal) > 1:
+        return "No especificado"
+
+    # Prioridad 4: identificar el campus mediante el prefijo del salón.
+    salon = (
+        evento.get("salon")
+        or evento.get("ubicacion")
+        or ""
+    )
+
+    salon_normalizado = normalizar_texto(str(salon))
+    primera_palabra = salon_normalizado.split(" ")[0] if salon_normalizado else ""
+
+    if primera_palabra == "cuauh":
+        return "CUAUH"
+
+    if primera_palabra == "cu":
+        return "CU"
+
+    return "No especificado"
+
+
 
 
 class Pregunta(BaseModel):
