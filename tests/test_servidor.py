@@ -48,13 +48,30 @@ def test_agente_responde_con_texto_y_eventos(bd_con_muestra):
     assert datos["busqueda"] == "entre las 10:00 y las 12:00"
     assert datos["filtros"]["hora_desde"] == "10:00"
     assert [evento["id"] for evento in datos["eventos"]] == [1, 2, 3, 6]
-    assert (datos["total"], datos["detalle"]) == (4, "")
+    assert datos["total"] == 4
+
+    # las actividades van en una tabla; hay una virtual, así que incluye la columna del enlace
+    (tabla,) = datos["tablas"]
+    assert tabla["titulo"] == "Actividades encontradas"
+    assert tabla["columnas"] == ["#", "Actividad", "Título", "Día", "Horario", "Lugar", "Ponente", "Enlace"]
+    assert tabla["filas"][0] == ["1", "Conferencia", "Introducción a sensores", "dom 20 sep", "10:00-12:00",
+                                 "Virtual", "Ponente A (UACJ)", "https://teams.microsoft.com/meet/000000"]
+    assert tabla["filas"][1][3:6] == ["lun 21 sep al vie 25 sep", "09:00-13:00", "W 102"]
+    assert len(tabla["filas"]) == 4 and tabla["nota"] == ""
 
 
-def test_agente_en_pregunta_general_devuelve_las_cifras(cliente):
+def test_agente_en_pregunta_general_devuelve_las_cifras_en_tablas(cliente):
     datos = cliente.post("/api/agente", json={"pregunta": "¿Qué tipos de actividad hay?"}).json()
     assert datos["eventos"] == [] and datos["total"] == 0
-    assert "Tipos de actividad (5)" in datos["detalle"]
+    assert [tabla["titulo"] for tabla in datos["tablas"]] == ["Tipos de actividad", "Modalidad", "Eventos por día"]
+    assert datos["tablas"][0]["columnas"] == ["Tipo de actividad", "Eventos"]
+    assert ["Concurso", "2"] in datos["tablas"][0]["filas"]
+
+
+def test_agente_sin_resultados_no_devuelve_tablas(bd_con_muestra):
+    cliente = _cliente(bd_con_muestra, actividad="Taller", fecha="2026-09-20")
+    datos = cliente.post("/api/agente", json={"pregunta": "¿Qué talleres hay el domingo?"}).json()
+    assert datos["tablas"] == [] and "No encontré" in datos["respuesta"]
 
 
 def test_agente_registra_la_sesion_de_la_pagina(bd_con_muestra):
@@ -74,7 +91,12 @@ def test_agente_rechaza_peticiones_invalidas(cliente, cuerpo):
 def test_sirve_la_pagina_pero_no_otros_archivos_de_la_carpeta(cliente):
     inicio = cliente.get("/")
     assert inicio.status_code == 200 and "UniConferencias" in inicio.text
+    assert 'class="chat-fab" href="/asistente"' in inicio.text      # el botón flotante lleva al asistente
     assert cliente.get("/script.js").status_code == 200
+
+    asistente = cliente.get("/asistente")
+    assert asistente.status_code == 200 and 'id="chat-form"' in asistente.text
+    assert cliente.get("/asistente.js").status_code == 200
     assert cliente.get("/Programa_32IIT_21-09.xlsx").status_code == 404
     assert cliente.get("/README.txt").status_code == 404
 

@@ -5,16 +5,16 @@ Cada pregunta sigue cuatro pasos:
 1. Interpretar: el modelo convierte la pregunta en filtros (Consulta).
 2. Recuperar: los filtros se resuelven con SQL en PostgreSQL y el tema con
    los vectores de los eventos.
-3. Redactar: el modelo responde en español a partir de lo encontrado. El
-   listado de eventos lo arma el programa con los datos de la base, así que
-   títulos, horarios y lugares nunca dependen de lo que escriba el modelo.
+3. Redactar: el modelo responde en español a partir de lo encontrado. La
+   información de las actividades va siempre en tablas que arma el programa
+   con los datos de la base, así que títulos, horarios y lugares nunca
+   dependen de lo que escriba el modelo.
 4. Registrar: la interacción queda guardada en `agente_interacciones`.
 """
 
 import logging
 import time as reloj
 from collections import Counter
-from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date
 from uuid import UUID, uuid4
@@ -78,17 +78,40 @@ Recibes una pregunta y los datos que se encontraron en la base de datos del prog
 
 
 @dataclass
+class Tabla:
+    """Tabla con datos tomados de la base: así se muestra siempre la información de las actividades."""
+    titulo: str
+    columnas: list[str]
+    filas: list[list[str]]
+    nota: str = ""          # aclaración al pie (por ejemplo, que no se muestran todos los eventos)
+
+    def como_texto(self) -> str:
+        """La tabla en formato Markdown, para la terminal y el historial."""
+        def renglon(celdas):
+            return "| " + " | ".join(str(c).replace("|", "\\|").replace("\n", " ") for c in celdas) + " |"
+
+        lineas = [self.titulo, renglon(self.columnas), renglon(["---"] * len(self.columnas)),
+                  *(renglon(fila) for fila in self.filas)]
+        return "\n".join(lineas + ([self.nota] if self.nota else []))
+
+
+@dataclass
 class Respuesta:
     pregunta: str
     consulta: Consulta
     eventos: list[dict]     # resultados que se muestran, ya ordenados
     texto: str              # lo que redactó el modelo
-    listado: str            # eventos o cifras formateados por el programa (vacío si no aplica)
+    tablas: list[Tabla]     # datos de las actividades, armados por el programa (vacía si no hubo resultados)
     total: int = 0          # eventos encontrados; puede ser mayor que los que se muestran
 
     @property
+    def listado(self) -> str:
+        """Las tablas como texto."""
+        return "\n\n".join(tabla.como_texto() for tabla in self.tablas)
+
+    @property
     def completa(self) -> str:
-        return f"{self.texto}\n\n{self.listado}" if self.listado else self.texto
+        return f"{self.texto}\n\n{self.listado}" if self.tablas else self.texto
 
 
 # --------------------------------------------------------------------------
@@ -102,13 +125,6 @@ def dia_largo(fecha: date) -> str:
 def dia_corto(fecha: date) -> str:
     """'lun 21 sep'"""
     return f"{sin_acentos(DIAS_ES[fecha.weekday()])[:3]} {fecha.day} {config.MESES[fecha.month - 1][:3]}"
-
-
-def _cuando(evento: dict, dia: Callable[[date], str]) -> str:
-    fechas = dia(evento["fecha_inicio"])
-    if evento["fecha_fin"] != evento["fecha_inicio"]:
-        fechas += f" al {dia(evento['fecha_fin'])}"
-    return f"{fechas}, {evento['hora_inicio']:%H:%M}-{evento['hora_fin']:%H:%M}"
 
 
 def _lugar(evento: dict) -> str:
@@ -129,18 +145,41 @@ def _frase_evento(evento: dict, con_presentador: bool = False) -> str:
     return frase
 
 
-def formatear_listado(eventos: list[dict], total: int | None = None) -> str:
-    """Listado numerado de eventos, con los datos tal como están en la base."""
-    lineas = []
+def tabla_eventos(eventos: list[dict], total: int | None = None) -> Tabla:
+    """Tabla de eventos con los datos tal como están en la base.
+
+    total: eventos encontrados, si son más de los que se muestran.
+    """
+    con_enlace = any(e["enlace"] for e in eventos)
+    filas = []
     for numero, e in enumerate(eventos, start=1):
-        lineas.append(f"{numero:>2}. {_cuando(e, dia_corto)} | {e['actividad']} | {_lugar(e)}")
-        persona = " - ".join(v for v in (e["ponente"], e["empresa_institucion"]) if v)
-        lineas.append(f"    {e['titulo']}" + (f" ({persona})" if persona else ""))
-        if e["enlace"]:
-            lineas.append(f"    {e['enlace']}")
-    if total and total > len(eventos):
-        lineas.append(f"(Se muestran {len(eventos)} de {total}. Acota la pregunta por día, horario o tema para ver el resto.)")
-    return "\n".join(lineas)
+        dias = dia_corto(e["fecha_inicio"])
+        if e["fecha_fin"] != e["fecha_inicio"]:
+            dias += f" al {dia_corto(e['fecha_fin'])}"
+        ponente = e["ponente"] or ""
+        if e["empresa_institucion"]:
+            ponente = f"{ponente} ({e['empresa_institucion']})" if ponente else e["empresa_institucion"]
+        fila = [str(numero), e["actividad"], e["titulo"], dias,
+                f"{e['hora_inicio']:%H:%M}-{e['hora_fin']:%H:%M}", e["salon"] or e["tipo"].capitalize(), ponente]
+        filas.append(fila + [e["enlace"] or ""] if con_enlace else fila)
+
+    columnas = ["#", "Actividad", "Título", "Día", "Horario", "Lugar", "Ponente"] + (["Enlace"] if con_enlace else [])
+    nota = (f"Se muestran {len(eventos)} de {total}. Acota la pregunta por día, horario o tema para ver el resto."
+            if total and total > len(eventos) else "")
+    return Tabla("Actividades encontradas", columnas, filas, nota)
+
+
+def tablas_resumen(catalogo: Catalogo) -> list[Tabla]:
+    """Tablas con las cifras del programa: por tipo de actividad, por modalidad y por día."""
+    def conteo(titulo: str, columna: str, conteos: dict, nota: str = "") -> Tabla:
+        return Tabla(titulo, [columna, "Eventos"], [[str(nombre), str(n)] for nombre, n in conteos.items()], nota)
+
+    return [
+        conteo("Tipos de actividad", "Tipo de actividad", catalogo.actividades),
+        conteo("Modalidad", "Modalidad", catalogo.modalidades),
+        conteo("Eventos por día", "Día", {dia_largo(d): n for d, n in catalogo.dias.items()},
+               nota="Una actividad de varios días cuenta en cada uno de ellos."),
+    ]
 
 
 def _conteos(conteos: dict) -> str:
@@ -295,8 +334,8 @@ class Agente:
     def _responder_resumen(self, pregunta, consulta, catalogo: Catalogo) -> Respuesta:
         """Pregunta general (sin filtros): se responde con el resumen del programa.
 
-        Las cifras las muestra el programa debajo del texto, igual que el
-        listado de eventos: el modelo no tiene que copiarlas ni contarlas.
+        Las cifras se muestran en tablas debajo del texto, igual que los
+        eventos: el modelo no tiene que copiarlas ni contarlas.
         """
         dias = list(catalogo.dias)
         periodo = (f"{catalogo.total} eventos, del {dia_largo(dias[0])} al {dia_largo(dias[-1])} de {dias[-1].year}, "
@@ -308,10 +347,10 @@ class Agente:
             + _conteos({dia_largo(d): n for d, n in catalogo.dias.items()}),
         ])
         datos = (f"Pregunta: {pregunta}\n\nPrograma: {periodo}.\n{cifras}\n\n"
-                 "Debajo de tu respuesta se mostrarán estas cifras completas: no las copies todas. "
+                 "Debajo de tu respuesta se mostrarán estas cifras en tablas: no las copies todas. "
                  "Responde a la pregunta en dos o tres frases.")
         texto = self.modelo.redactar(INSTRUCCIONES_REDACTOR, datos) or f"El programa tiene {periodo}."
-        return Respuesta(pregunta, consulta, [], texto, cifras)
+        return Respuesta(pregunta, consulta, [], texto, tablas_resumen(catalogo))
 
     def _responder_busqueda(self, pregunta, consulta: Consulta) -> Respuesta:
         eventos = self.almacen.buscar(consulta)
@@ -322,7 +361,7 @@ class Agente:
 
         if not eventos:
             texto = f"No encontré actividades con estas características: {consulta.descripcion()}."
-            return Respuesta(pregunta, consulta, [], texto, "")
+            return Respuesta(pregunta, consulta, [], texto, [])
 
         ejemplos = eventos[:config.EVENTOS_PARA_MODELO]
         orden = "del más al menos relacionado con el tema" if consulta.tema else "en orden cronológico"
@@ -340,14 +379,14 @@ class Agente:
             ("Los eventos" if len(ejemplos) == len(eventos) else f"Los primeros {len(ejemplos)} eventos") + f", {orden}:",
             *(_frase_evento(e, con_presentador=bool(consulta.tema)) for e in ejemplos),
             "",
-            "El listado completo, con horarios y lugares, aparece debajo de la respuesta. "
+            "Debajo de la respuesta aparece una tabla con todos los eventos, sus horarios y lugares. "
             "Responde a la pregunta en dos o tres frases: di cuántos eventos se encontraron y menciona "
             "como máximo dos títulos. No enumeres los eventos ni menciones estas indicaciones.",
         ]
         texto = (self.modelo.redactar(INSTRUCCIONES_REDACTOR, "\n".join(datos))
                  or f"Encontré {len(eventos)} eventos ({consulta.descripcion()}).")
         mostrados = eventos[:config.MAX_LISTADO]
-        return Respuesta(pregunta, consulta, mostrados, texto, formatear_listado(mostrados, len(eventos)),
+        return Respuesta(pregunta, consulta, mostrados, texto, [tabla_eventos(mostrados, len(eventos))],
                          total=len(eventos))
 
 

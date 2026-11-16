@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Asistente | UniConferencias</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="header">
+    <div class="header-container">
+      <a href="/" class="logo" aria-label="UniConferencias inicio">
+        <span class="logo-icon">U</span><span>UniConferencias</span>
+      </a>
+      <nav class="navigation" aria-label="Conversación">
+        <button type="button" class="chat-new" id="chat-new" hidden>Nueva conversación</button>
+      </nav>
+      <a class="login-button" href="/">← Volver al programa</a>
+    </div>
+  </header>
+
+  <main class="chat-container">
+    <section class="chat-intro" id="chat-intro">
+      <span class="eyebrow">ASISTENTE</span>
+      <h1>Pregunta por el programa</h1>
+      <p>Responde con los datos del programa de la Semana de Ingeniería. La información de las actividades se muestra siempre en tablas.</p>
+      <div class="chat-suggestions" id="chat-suggestions">
+        <button type="button" class="chip">¿Qué conferencias hay entre las 10 y las 12?</button>
+        <button type="button" class="chip">¿Qué conferencias están relacionadas con inteligencia artificial?</button>
+        <button type="button" class="chip">¿Qué tipos de actividad hay?</button>
+      </div>
+    </section>
+    <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+  </main>
+
+  <form class="chat-form" id="chat-form">
+    <div class="search-box">
+      <input type="text" id="question" placeholder="Escribe tu pregunta…" autocomplete="off" maxlength="500" aria-label="Pregunta para el asistente">
+      <button type="submit" class="search-button" id="ask-button">Enviar</button>
+    </div>
+  </form>
+  <script src="asistente.js"></script>
+</body>
+</html>

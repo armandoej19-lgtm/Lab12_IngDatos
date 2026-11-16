@@ -1,8 +1,9 @@
 """Servicio web del agente: la API que usa la página y la página misma.
 
     GET  /api/eventos   programa completo, leído de PostgreSQL
-    POST /api/agente    {"pregunta": "..."} -> respuesta del agente y eventos encontrados
+    POST /api/agente    {"pregunta": "..."} -> respuesta del agente con sus tablas
     GET  /              página de UniConferencias
+    GET  /asistente     conversación con el agente (se abre con el botón flotante)
 
 Uso:
     python -m agente.servidor               # http://localhost:8000
@@ -13,6 +14,7 @@ import argparse
 import logging
 import threading
 from contextlib import asynccontextmanager, contextmanager
+from dataclasses import asdict
 from pathlib import Path
 from typing import Annotated
 from uuid import UUID
@@ -21,7 +23,7 @@ import psycopg
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, StringConstraints
 
@@ -144,10 +146,15 @@ def crear_app(url_bd: str | None = None, modelo=None) -> FastAPI:
             "busqueda": respuesta.consulta.descripcion(),
             "filtros": respuesta.consulta.como_dict(),
             "total": respuesta.total,
+            # la información de las actividades va siempre en tablas: {titulo, columnas, filas, nota}
+            "tablas": [asdict(tabla) for tabla in respuesta.tablas],
             "eventos": [para_web(evento) for evento in respuesta.eventos],
-            # en una pregunta general no hay eventos: el detalle son las cifras del programa
-            "detalle": "" if respuesta.eventos else respuesta.listado,
         }
+
+    @app.get("/asistente", include_in_schema=False)
+    def asistente() -> FileResponse:
+        """Página de la conversación con el agente; se abre con el botón flotante de la página principal."""
+        return FileResponse(PAGINA / "asistente.html")
 
     app.mount("/", ArchivosDePagina(directory=PAGINA, html=True), name="pagina")
     return app

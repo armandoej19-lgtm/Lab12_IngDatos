@@ -1,10 +1,13 @@
 # UniConferencias — Página web
 
-Página del programa de la Semana de Ingeniería: búsqueda, filtros, agenda local,
-enlace a Outlook y un asistente que responde preguntas sobre el programa.
+Página del programa de la Semana de Ingeniería: búsqueda, filtros, agenda local y
+enlace a Outlook. Un botón flotante abre el asistente, que responde preguntas sobre
+el programa y muestra las actividades en tablas.
 
 ## Archivos
-- `index.html`, `styles.css`, `script.js`: la página.
+- `index.html`, `script.js`: la página del programa.
+- `asistente.html`, `asistente.js`: la conversación con el asistente (`/asistente`).
+- `styles.css`: estilos de las dos páginas.
 - `Programa_32IIT_21-09.xlsx` y `Diccionario_Datos_Semana_Ingenieria.xlsx`: copias de los
   archivos de entrada. El pipeline los lee de `data/raw/`, no de aquí.
 
@@ -13,7 +16,7 @@ Esta carpeta ya no tiene un pipeline propio ni `conferencias.json`. Los datos sa
 y la página los pide al servidor:
 
 - `GET  /api/eventos`: el programa completo.
-- `POST /api/agente` con `{"pregunta": "..."}`: la respuesta del asistente y los eventos que encontró.
+- `POST /api/agente` con `{"pregunta": "..."}`: la respuesta del asistente y las tablas con las actividades.
 
 ## Uso
 Desde la raíz del proyecto (ver el README principal para la instalación):

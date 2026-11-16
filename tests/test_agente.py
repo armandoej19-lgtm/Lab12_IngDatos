@@ -20,7 +20,7 @@ import psycopg
 import pytest
 
 from agente import Agente, Almacen, SinDatos
-from agente.agente import destacados, formatear_listado, nombra, ordenar_por_similitud
+from agente.agente import destacados, nombra, ordenar_por_similitud, tabla_eventos
 from agente.consulta import Consulta, a_hora, desde_modelo, emparentadas, esquema, variantes
 from modelo_falso import ModeloFalso
 
@@ -147,14 +147,22 @@ def test_similitud_ordena_y_destaca_los_mas_parecidos():
     assert destacados([]) == []
 
 
-def test_listado_avisa_cuando_no_muestra_todo():
+def test_tabla_de_eventos_muestra_los_datos_y_avisa_si_no_estan_todos():
     evento = {"actividad": "Taller", "fecha_inicio": date(2026, 9, 21), "fecha_fin": date(2026, 9, 21),
               "hora_inicio": time(9), "hora_fin": time(10, 30), "tipo": "presencial", "salon": "W 102",
               "titulo": "Soldadura", "ponente": "Ponente A", "empresa_institucion": "UACJ", "enlace": None}
-    listado = formatear_listado([evento], total=4)
-    assert "lun 21 sep, 09:00-10:30 | Taller | W 102" in listado
-    assert "Soldadura (Ponente A - UACJ)" in listado
-    assert "Se muestran 1 de 4" in listado
+    tabla = tabla_eventos([evento], total=4)
+    assert tabla.columnas == ["#", "Actividad", "Título", "Día", "Horario", "Lugar", "Ponente"]
+    assert tabla.filas == [["1", "Taller", "Soldadura", "lun 21 sep", "09:00-10:30", "W 102", "Ponente A (UACJ)"]]
+    assert "Se muestran 1 de 4" in tabla.nota
+    assert "| 1 | Taller | Soldadura | lun 21 sep | 09:00-10:30 | W 102 | Ponente A (UACJ) |" in tabla.como_texto()
+
+    # la columna del enlace solo aparece si algún evento lo tiene
+    virtual = evento | {"tipo": "virtual", "salon": None, "enlace": "https://teams.microsoft.com/x"}
+    con_enlace = tabla_eventos([evento, virtual])
+    assert con_enlace.columnas[-1] == "Enlace" and con_enlace.nota == ""
+    assert [fila[-1] for fila in con_enlace.filas] == ["", "https://teams.microsoft.com/x"]
+    assert con_enlace.filas[1][5] == "Virtual"
 
 
 # --- Agente completo (PostgreSQL + modelo falso) ----------------------------
@@ -226,10 +234,12 @@ def test_pregunta_general_responde_con_el_resumen(conn):
     agente = _agente(conn)
     respuesta = agente.preguntar("¿Qué tipos de actividad hay?")
     assert respuesta.eventos == [] and respuesta.texto == "Respuesta de prueba."
-    # las cifras las muestra el programa; el modelo las recibe para redactar
-    assert "Tipos de actividad (5): Concurso (2), Conferencia (1)" in respuesta.listado
-    assert "Modalidad: presencial (4), virtual (2)" in respuesta.listado
-    assert respuesta.listado in agente.modelo.datos_recibidos
+    # las cifras van en tablas que arma el programa; el modelo las recibe para redactar
+    tipos, modalidad, por_dia = respuesta.tablas
+    assert tipos.titulo == "Tipos de actividad" and tipos.filas[0] == ["Concurso", "2"] and len(tipos.filas) == 5
+    assert modalidad.filas == [["presencial", "4"], ["virtual", "2"]]
+    assert por_dia.columnas == ["Día", "Eventos"] and por_dia.filas[0] == ["domingo 20 de septiembre", "1"]
+    assert "Tipos de actividad (5): Concurso (2), Conferencia (1)" in agente.modelo.datos_recibidos
 
 
 def test_sin_resultados_no_llama_al_modelo(conn):

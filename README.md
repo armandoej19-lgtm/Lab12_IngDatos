@@ -46,7 +46,7 @@ Los parámetros del evento (rango de fechas y horas, patrón de enlaces, mapeos 
 - **La limpieza trata, la selección decide.** La limpieza nunca borra registros: corrige lo que la validación marcó cuando la corrección es segura, por ejemplo `CUAUH` → `Concurso` o `"CUAUH A 108 - Audiovisual"` → `"CUAUH A 108"`. Después se valida de nuevo, y lo que siga incumpliendo (como una hora fin anterior a la hora inicio, que no se puede corregir sin adivinar) lo separa la selección.
 - **Nada se pierde en silencio.** Cada incumplimiento queda registrado con su fila del Excel. Cada corrección queda en la bitácora con su valor antes y después. Cada rechazo indica la fila, sus valores originales y el motivo.
 - **La base de datos es neutral.** Las tablas del programa solo usan tipos estándar de PostgreSQL y no dependen del agente: cualquier aplicación puede consultarlas. Lo que es propio del agente vive en dos tablas aparte.
-- **Los datos los pone la base, no el modelo.** El modelo interpreta la pregunta y redacta una respuesta breve, pero los eventos se buscan con SQL y tanto el listado como las cifras los escribe el programa. Un título, un horario, un salón o un total nunca dependen de lo que escriba el modelo.
+- **Los datos los pone la base, no el modelo.** El modelo interpreta la pregunta y redacta una respuesta breve, pero los eventos se buscan con SQL y las tablas con que se muestran las arma el programa. Un título, un horario, un salón o un total nunca dependen de lo que escriba el modelo.
 
 ### Reglas de validación
 
@@ -203,16 +203,17 @@ Se encontraron 6 eventos relacionados con inteligencia artificial. Los títulos 
 «Detección de estrés por medio de video con inteligencia artificial» y «Inteligencia Artificial:
 Reto y Oportunidad del Siglo XXI».
 
- 1. lun 21 sep, 13:00-15:30 | Conferencia | H 101
-    Detección de estrés por medio de video con inteligencia artificial (Ing. ... - UACJ)
- 2. jue 24 sep, 09:30-11:00 | Conferencia magistral | B 116
-    Inteligencia Artificial: Reto y Oportunidad del Siglo XXI (... - UNAM)
- ...
+Actividades encontradas
+| # | Actividad | Título | Día | Horario | Lugar | Ponente | Enlace |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | Conferencia | Detección de estrés por medio de video con inteligencia artificial | lun 21 sep | 13:00-15:30 | H 101 | Ing. ... (UACJ) |  |
+| 2 | Conferencia magistral | Inteligencia Artificial: Reto y Oportunidad del Siglo XXI | jue 24 sep | 09:30-11:00 | B 116 | ... (UNAM) |  |
+...
 
 [Búsqueda: actividad Conferencia, tema «inteligencia artificial»]
 ```
 
-La última línea muestra cómo se entendió la pregunta, para poder reformularla si no era eso.
+La información de las actividades va siempre en una tabla. La última línea muestra cómo se entendió la pregunta, para poder reformularla si no era eso.
 
 **Página web.** Con el pipeline ya ejecutado, inicia el servidor y abre `http://localhost:8000`:
 
@@ -220,13 +221,18 @@ La última línea muestra cómo se entendió la pregunta, para poder reformularl
 python -m agente.servidor
 ```
 
-El servidor entrega la página y la API juntas. Al arrancar deja listo el agente (comprueba Ollama y genera los vectores que falten); si Ollama o PostgreSQL no están disponibles, la página lo indica. La primera pregunta después de un rato sin uso tarda más, porque Ollama vuelve a cargar el modelo en memoria. Para usar otro puerto: `python -m agente.servidor --puerto 8080`.
+La página del programa tiene un botón flotante, **Asistente**, que abre la conversación con el agente en `http://localhost:8000/asistente`. Ahí cada respuesta trae un texto breve y las tablas con las actividades; la conversación se conserva mientras la pestaña siga abierta.
+
+El servidor entrega las páginas y la API juntas. Al arrancar deja listo el agente (comprueba Ollama y genera los vectores que falten); si Ollama o PostgreSQL no están disponibles, la página lo indica. La primera pregunta después de un rato sin uso tarda más, porque Ollama vuelve a cargar el modelo en memoria. Para usar otro puerto: `python -m agente.servidor --puerto 8080`.
 
 | Ruta | Qué devuelve |
 |---|---|
 | `GET /api/eventos` | El programa completo, con los campos que usa la página. |
-| `POST /api/agente` | Recibe `{"pregunta": "..."}` y devuelve `respuesta` (texto del agente), `busqueda` (cómo se entendió), `eventos` (los encontrados, hasta 30), `total` y `detalle` (las cifras del programa, en preguntas generales). |
+| `POST /api/agente` | Recibe `{"pregunta": "..."}` y devuelve `respuesta` (texto del agente), `busqueda` (cómo se entendió), `tablas` (la información de las actividades), `eventos` (los encontrados, hasta 30) y `total`. |
+| `GET /asistente` | La página de la conversación con el agente. |
 | `GET /docs` | Documentación interactiva de la API. |
+
+Cada elemento de `tablas` tiene `titulo`, `columnas`, `filas` y `nota`. Una búsqueda devuelve una tabla con los eventos; una pregunta general, tres tablas con las cifras del programa (por tipo de actividad, por modalidad y por día). Si no hay resultados, la lista viene vacía.
 
 ```bash
 curl -X POST http://localhost:8000/api/agente -H "Content-Type: application/json" -d '{"pregunta": "que talleres hay el martes"}'
@@ -275,7 +281,7 @@ Cada pregunta sigue cuatro pasos (`agente/agente.py`):
 
 1. **Interpretar.** El modelo convierte la pregunta en filtros: actividad, modalidad, día, horario y tema. Su salida está restringida a los valores que existen en la base y después se valida: la actividad solo cuenta si la pregunta la nombra, y una hora anterior al inicio del programa se entiende como de la tarde («la 1» es 13:00).
 2. **Recuperar.** Los filtros se resuelven con SQL sobre `eventos`. El tema se busca de dos formas: entran siempre los eventos que lo nombran (en el título, la actividad, el ponente, la empresa o el salón), y se añaden los afines, que son los más parecidos según sus vectores cuando el modelo confirma que tratan de eso.
-3. **Redactar.** El modelo escribe dos o tres frases a partir de lo encontrado. Debajo, el programa muestra el listado de eventos o las cifras del programa, tomados de la base.
+3. **Redactar.** El modelo escribe dos o tres frases a partir de lo encontrado. La información de las actividades se muestra siempre en tablas, que arma el programa con los datos de la base: una tabla de eventos o, en una pregunta general, las cifras del programa.
 4. **Registrar.** La interacción se guarda en `agente_interacciones`.
 
 | Pregunta | Cómo se resuelve |
@@ -291,7 +297,7 @@ Cómo se interpreta el horario: «entre las 10 y las 12» devuelve los eventos q
 Límites conocidos:
 
 - La búsqueda de temas afines es aproximada y prefiere quedarse corta: puede omitir un evento relacionado que no nombre el tema (con «videojuegos» no aparece el «Torneo de E-GAMES»). Si un tema no está en el programa, responde que no encontró actividades.
-- El texto que redacta el modelo puede tener imprecisiones de redacción; los datos fiables son los del listado.
+- El texto que redacta el modelo puede tener imprecisiones de redacción; los datos fiables son los de las tablas.
 - Cada pregunta se responde por separado: el agente no recuerda la anterior.
 
 Los modelos y los límites de búsqueda están en `agente/config.py`. Los modelos también se pueden cambiar en `.env` con `AGENTE_MODELO` y `AGENTE_MODELO_EMBEDDINGS`; si cambia el de embeddings, el agente regenera los vectores al iniciar y conviene volver a medir los umbrales de similitud.
