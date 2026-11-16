@@ -76,3 +76,39 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install -r requirements-dev.txt
       - run: pytest -q
+
+  # Construye la imagen de los modelos para Fedora (docker/Dockerfile) y comprueba que
+  # genera texto y vectores solo con procesador. Usa dos modelos muy pequeños para no
+  # descargar los del proyecto, que pesan 3.7 GB.
+  imagen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Construir la imagen
+        run: docker build -t semana-modelo docker
+      - name: Arrancar el contenedor
+        run: >-
+          docker run -d --name semana-modelo -p 127.0.0.1:11434:11434
+          -e MODELOS="all-minilm smollm2:135m" --memory 2g --cpus 2 semana-modelo
+      - name: Esperar a que descargue los modelos de prueba
+        run: |
+          for intento in $(seq 1 120); do
+            if docker logs semana-modelo 2>&1 | grep -q "^Listo"; then exit 0; fi
+            if [ "$(docker inspect -f '{{.State.Running}}' semana-modelo)" != "true" ]; then break; fi
+            sleep 2
+          done
+          docker logs semana-modelo
+          exit 1
+      - name: Generar texto y vectores
+        run: |
+          curl -fsS http://localhost:11434/api/generate -d '{"model": "smollm2:135m", "prompt": "Hola", "stream": false, "options": {"num_predict": 8}}' | tee generar.json
+          grep -q '"done":true' generar.json
+          curl -fsS http://localhost:11434/api/embed -d '{"model": "all-minilm", "input": "hola"}' | grep -q '"embeddings":\[\['
+      - name: Datos de la imagen
+        if: always()
+        run: |
+          docker exec semana-modelo cat /etc/fedora-release
+          docker exec semana-modelo ls /usr/lib/ollama
+          docker image inspect semana-modelo --format 'Tamaño de la imagen: {{.Size}} bytes'
+          docker stats --no-stream --format 'Memoria en uso: {{.MemUsage}}' semana-modelo
+          docker logs semana-modelo 2>&1 | tail -40

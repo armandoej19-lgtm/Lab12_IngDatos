@@ -4,6 +4,7 @@ import json
 import os
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import ollama
 
@@ -16,6 +17,18 @@ class ModeloNoDisponible(RuntimeError):
     """Ollama no responde o falta descargar alguno de los modelos."""
 
 
+@dataclass
+class Uso:
+    """Tokens que han procesado los modelos desde que se creó el cliente."""
+    tokens_entrada: int = 0     # leídos: instrucciones, preguntas, datos y textos vectorizados
+    tokens_salida: int = 0      # generados
+
+    def sumar(self, respuesta) -> None:
+        """Acumula lo que Ollama reporta en una respuesta de chat o de embeddings."""
+        self.tokens_entrada += getattr(respuesta, "prompt_eval_count", None) or 0
+        self.tokens_salida += getattr(respuesta, "eval_count", None) or 0
+
+
 class Modelo:
     def __init__(self, chat: str | None = None, embeddings: str | None = None, host: str | None = None):
         self.chat = chat or os.getenv(config.VAR_MODELO) or config.MODELO
@@ -23,6 +36,7 @@ class Modelo:
         self._cliente = ollama.Client(host=host)  # sin host usa OLLAMA_HOST o http://localhost:11434
         self._opciones = {"temperature": config.TEMPERATURA, "num_ctx": config.TOKENS_CONTEXTO}
         self._pensar = None  # se define en verificar()
+        self.uso = Uso()
 
     def _llamar(self, funcion: Callable, **argumentos):
         try:
@@ -44,10 +58,12 @@ class Modelo:
         self._llamar(self._cliente.show, model=self.embeddings)
 
     def _conversar(self, sistema: str, usuario: str, **extra):
-        return self._llamar(
+        respuesta = self._llamar(
             self._cliente.chat, model=self.chat, think=self._pensar,
             messages=[{"role": "system", "content": sistema}, {"role": "user", "content": usuario}],
             **extra)
+        self.uso.sumar(respuesta)
+        return respuesta
 
     def interpretar(self, sistema: str, usuario: str, esquema: dict) -> dict:
         """Respuesta en JSON restringida por `esquema`."""
@@ -78,4 +94,5 @@ class Modelo:
     def vectorizar(self, textos: list[str]) -> list[list[float]]:
         """Un vector (embedding) por cada texto."""
         respuesta = self._llamar(self._cliente.embed, model=self.embeddings, input=textos)
+        self.uso.sumar(respuesta)
         return [list(vector) for vector in respuesta.embeddings]

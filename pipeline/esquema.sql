@@ -105,9 +105,17 @@ CREATE TABLE IF NOT EXISTS agente_interacciones (
     respuesta      text NOT NULL,
     modelo         text NOT NULL,
     duracion_ms    integer NOT NULL,
+    tokens_entrada integer,
+    tokens_salida  integer,
     creado_en      timestamptz NOT NULL DEFAULT now()
 );
+-- Bases creadas con una versión anterior del esquema: se agregan las columnas nuevas
+ALTER TABLE agente_interacciones ADD COLUMN IF NOT EXISTS tokens_entrada integer;
+ALTER TABLE agente_interacciones ADD COLUMN IF NOT EXISTS tokens_salida integer;
 COMMENT ON TABLE agente_interacciones IS 'Historial de preguntas y respuestas del agente.';
+COMMENT ON COLUMN agente_interacciones.tokens_entrada IS
+    'Tokens que leyeron los modelos para responder (instrucciones, pregunta y datos). Nulo en registros anteriores.';
+COMMENT ON COLUMN agente_interacciones.tokens_salida IS 'Tokens que generó el modelo. Nulo en registros anteriores.';
 COMMENT ON COLUMN agente_interacciones.sesion IS 'Agrupa las preguntas de una misma conversación.';
 COMMENT ON COLUMN agente_interacciones.filtros IS 'Filtros que el modelo extrajo de la pregunta.';
 COMMENT ON COLUMN agente_interacciones.eventos IS

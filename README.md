@@ -80,8 +80,10 @@ pipeline-semana-ingenieria/
 │   ├── bd.py                   # conexión y carga en PostgreSQL
 │   └── esquema.sql             # tablas de la base de datos
 ├── agente/                     # agente de preguntas y respuestas (Ollama)
-│   └── servidor.py             # API web del agente; también sirve la página
+│   ├── servidor.py             # API web del agente; también sirve la página
+│   └── metricas.py             # vista en consola con las métricas de los modelos
 ├── UniConferencias/            # página web (HTML, CSS y JavaScript)
+├── docker/                     # imagen de los modelos para Fedora, de bajo consumo
 ├── scripts/
 │   ├── crear_bd.py             # crea el rol y la base de datos
 │   └── generar_datos_muestra.py
@@ -158,6 +160,26 @@ ollama pull bge-m3
 ```
 
 `qwen3:4b` (Apache 2.0) interpreta las preguntas y redacta; `bge-m3` (MIT) genera los vectores. Funcionan con tarjeta gráfica o solo con procesador. Con 8 GB de RAM conviene cerrar otros programas: el modelo de chat ocupa unos 2.5 GB.
+
+**En Fedora, los modelos también pueden ir en un contenedor**, en lugar de instalar Ollama. La imagen de `docker/Dockerfile` parte de Fedora mínima, deja fuera las bibliotecas de GPU (más de 3 GB) y arranca Ollama con ajustes de bajo consumo:
+
+```bash
+docker build -t semana-modelo docker
+docker run -d --name semana-modelo -p 127.0.0.1:11434:11434 -v semana-modelos:/ollama --memory 5g --cpus 4 semana-modelo
+```
+
+Con `podman` los comandos son los mismos. La primera vez descarga los modelos al volumen `semana-modelos` (`docker logs -f semana-modelo` muestra el avance); después arranca en segundos. El proyecto se conecta sin cambios, porque usa `http://localhost:11434`.
+
+| Ajuste | Qué ahorra |
+|---|---|
+| Solo procesador | Imagen pequeña, sin bibliotecas de GPU. |
+| `OLLAMA_MAX_LOADED_MODELS=1` | Un solo modelo en memoria: el de chat y el de vectores se turnan. Cuesta unos segundos al cambiar de uno a otro. |
+| `OLLAMA_NUM_PARALLEL=1` | Una petición a la vez; la memoria de contexto no se multiplica. |
+| `OLLAMA_KV_CACHE_TYPE=q8_0` | El contexto ocupa cerca de la mitad. |
+| `OLLAMA_KEEP_ALIVE=2m` | La memoria se libera a los 2 minutos sin uso. |
+| `--memory` y `--cpus` | Tope de RAM y de núcleos para el contenedor. |
+
+Cualquier ajuste se cambia con `-e`, por ejemplo `-e OLLAMA_MAX_LOADED_MODELS=2` si sobra memoria. Para gastar todavía menos se puede usar un modelo de chat más pequeño con `-e MODELOS="qwen3:1.7b bge-m3"` y `AGENTE_MODELO=qwen3:1.7b` en `.env`; responde peor que el de 4B y no está probado con este programa.
 
 ## Uso
 
@@ -240,6 +262,40 @@ curl -X POST http://localhost:8000/api/agente -H "Content-Type: application/json
 
 La petición debe ir en UTF-8. La página y cualquier programa lo hacen así; desde la terminal de Windows los acentos se envían en otra codificación y el servidor responde con un error 400.
 
+**Métricas de los modelos.** Una vista en consola con la ficha de cada modelo, la memoria que ocupan y los tokens que ha consumido el agente:
+
+```bash
+python -m agente.metricas
+```
+
+```
+MODELO DE CHAT · qwen3:4b
+  Parámetros           4,022,468,096 (4.0B)
+  Arquitectura         qwen3, 36 capas, cuantización Q4_K_M (gguf)
+  Contexto             4,096 tokens por petición (el modelo admite hasta 262,144)
+  Tamaño en disco      2.33 GiB
+
+MEMORIA
+  qwen3:4b             2.96 GiB (todo en GPU) · contexto de 4,096 · se libera en 5 min
+  bge-m3               no está cargado (se carga al usarlo)
+  Procesos de Ollama   2.70 GiB de RAM
+  RAM del sistema      7.91 GiB · 430 MiB libres (95% en uso)
+
+USO DEL AGENTE
+  Preguntas            46 en 20 conversaciones (hoy: 14)
+  Tokens leídos        1,921 (promedio de 1,921 por pregunta)
+  Tokens generados     121 (promedio de 121 por pregunta)
+  Tiempo por pregunta  mediana de 5.5 s · promedio de 12.3 s
+  16/11 12:48          7.8 s · 1,921 leídos, 121 generados · que concursos hay el miercoles
+```
+
+| Opción | Qué hace |
+|---|---|
+| `--medir` | Añade la velocidad del modelo de chat (tokens por segundo al leer y al generar), medida con una generación corta. Carga el modelo en memoria. |
+| `--seguir 5` | Actualiza la vista cada 5 segundos hasta pulsar Ctrl+C. |
+
+De dónde sale cada dato: la ficha y la memoria de cada modelo las reporta Ollama; «Procesos de Ollama» y «RAM del sistema» los mide el sistema operativo; el uso sale del historial `agente_interacciones`. Los tokens se guardan por pregunta desde esta versión, así que las preguntas anteriores aparecen sin ellos.
+
 ## Salidas
 
 ### Base de datos (PostgreSQL)
@@ -254,7 +310,7 @@ Cada ejecución reemplaza el contenido de las cinco tablas del programa en una s
 | `reporte_validacion` | Errores por regla, antes y después de la limpieza. |
 | `incumplimientos_validacion` | Detalle de la validación de los datos originales: una fila por cada regla que incumple cada registro. |
 | `agente_vectores` | Vector (embedding) del título y la clase de actividad de cada evento, guardado como `real[]`. Se borra con su evento y el agente lo regenera al iniciar. |
-| `agente_interacciones` | Historial del agente: pregunta, filtros que interpretó, eventos mostrados, respuesta, modelo y duración. No se borra al recargar el programa. |
+| `agente_interacciones` | Historial del agente: pregunta, filtros que interpretó, eventos mostrados, respuesta, modelo, duración y tokens leídos y generados. No se borra al recargar el programa. |
 
 Las cinco primeras son neutrales: no requieren extensiones y sirven a cualquier aplicación. La página web es una de ellas: lee `eventos` a través de la API. Por ejemplo:
 
@@ -316,4 +372,4 @@ pytest -q
 
 Las pruebas cubren cada etapa, el pipeline completo con los datos de muestra, el agente y su servicio web (con un modelo simulado, para probar la lógica del programa sin depender de Ollama). Las que necesitan PostgreSQL usan la base de `DATABASE_URL` dentro de un esquema temporal que se borra al terminar, así que no tocan las tablas reales; si no hay base de datos disponible, se omiten.
 
-GitHub Actions las corre en cada push en un contenedor de Fedora, en Windows y en Ubuntu (`.github/workflows/tests.yml`).
+GitHub Actions las corre en cada push en un contenedor de Fedora, en Windows y en Ubuntu (`.github/workflows/tests.yml`). El mismo flujo construye la imagen de `docker/Dockerfile` y comprueba que genera texto y vectores solo con procesador, con dos modelos muy pequeños para no descargar los del proyecto.

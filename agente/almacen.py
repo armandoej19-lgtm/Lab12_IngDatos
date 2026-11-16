@@ -8,6 +8,8 @@ import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 
+from pipeline import bd
+
 from .consulta import Consulta
 
 COLUMNAS_EVENTO = ("id_evento, actividad, fecha_inicio, fecha_fin, hora_inicio, hora_fin, tipo, "
@@ -36,6 +38,17 @@ class Almacen:
     def _filas(self, consulta: str, parametros=None) -> list[dict]:
         with self.conn.cursor(row_factory=dict_row) as cur:
             return cur.execute(consulta, parametros).fetchall()
+
+    def asegurar_esquema(self) -> None:
+        """Pone al día las tablas del agente si la base se creó con una versión anterior del esquema.
+
+        Si las tablas todavía no existen no hace nada: crearlas le corresponde al pipeline.
+        """
+        columnas = {f["column_name"] for f in self._filas(
+            "SELECT column_name FROM information_schema.columns "
+            "WHERE table_schema = current_schema() AND table_name = 'agente_interacciones'")}
+        if columnas and "tokens_entrada" not in columnas:
+            bd.crear_esquema(self.conn)
 
     # ----------------------------------------------------------------------
     # Programa
@@ -128,8 +141,11 @@ class Almacen:
     # Interacciones
     # ----------------------------------------------------------------------
     def registrar(self, sesion: UUID, pregunta: str, consulta: Consulta, eventos: list[int],
-                  respuesta: str, modelo: str, duracion_ms: int) -> None:
+                  respuesta: str, modelo: str, duracion_ms: int,
+                  tokens_entrada: int, tokens_salida: int) -> None:
         self.conn.execute(
-            "INSERT INTO agente_interacciones (sesion, pregunta, filtros, eventos, respuesta, modelo, duracion_ms) "
-            "VALUES (%s, %s, %s, %s::integer[], %s, %s, %s)",
-            [sesion, pregunta, Jsonb(consulta.como_dict()), eventos, respuesta, modelo, duracion_ms])
+            "INSERT INTO agente_interacciones (sesion, pregunta, filtros, eventos, respuesta, modelo, "
+            "duracion_ms, tokens_entrada, tokens_salida) "
+            "VALUES (%s, %s, %s, %s::integer[], %s, %s, %s, %s, %s)",
+            [sesion, pregunta, Jsonb(consulta.como_dict()), eventos, respuesta, modelo,
+             duracion_ms, tokens_entrada, tokens_salida])

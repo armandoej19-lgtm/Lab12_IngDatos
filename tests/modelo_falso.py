@@ -1,6 +1,7 @@
 """Modelo simulado para las pruebas del agente y de su servicio web."""
 
 from agente.consulta import sin_acentos
+from agente.modelo import Uso
 
 
 class ModeloFalso:
@@ -18,19 +19,25 @@ class ModeloFalso:
         self.afines = afines or []
         self.candidatos = None      # lista que recibió para filtrar por tema
         self.datos_recibidos = None  # datos que recibió para redactar
+        self.uso = Uso()            # cada llamada simulada consume una cantidad fija de tokens
 
     def verificar(self):
         pass
 
     def interpretar(self, sistema, usuario, esquema):
+        self.uso.tokens_entrada += 100
+        self.uso.tokens_salida += 10
         if "relacionados" in esquema["properties"]:
             self.candidatos = usuario
             return {"relacionados": self.afines}
         return self.filtros
 
     def redactar(self, sistema, usuario):
+        self.uso.tokens_entrada += 50
+        self.uso.tokens_salida += 20
         self.datos_recibidos = usuario
         return "Respuesta de prueba."
 
     def vectorizar(self, textos):
+        self.uso.tokens_entrada += len(textos)
         return [[float(palabra in sin_acentos(texto)) for palabra in self.PALABRAS] for texto in textos]

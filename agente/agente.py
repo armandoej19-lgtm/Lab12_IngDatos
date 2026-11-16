@@ -242,6 +242,7 @@ class Agente:
         Un vector falta si el evento no lo tiene, si es de otro modelo de
         embeddings o si se calculó con un texto distinto del actual.
         """
+        self.almacen.asegurar_esquema()
         self.almacen.catalogo()
         pendientes = [e for e in self.almacen.estado_vectores(self.modelo.embeddings)
                       if e["contenido"] != texto_evento(e)]
@@ -256,8 +257,10 @@ class Agente:
         return len(pendientes)
 
     def preguntar(self, pregunta: str) -> Respuesta:
-        """Responde una pregunta y la deja registrada."""
+        """Responde una pregunta y la deja registrada, con su duración y los tokens que consumió."""
         inicio = reloj.perf_counter()
+        uso = self.modelo.uso
+        entrada, salida = uso.tokens_entrada, uso.tokens_salida
         catalogo = self.almacen.catalogo()
         consulta = self._interpretar(pregunta, catalogo)
 
@@ -268,7 +271,8 @@ class Agente:
 
         self.almacen.registrar(
             self.sesion, pregunta, consulta, [e["id_evento"] for e in respuesta.eventos],
-            respuesta.completa, self.modelo.chat, int((reloj.perf_counter() - inicio) * 1000))
+            respuesta.completa, self.modelo.chat, int((reloj.perf_counter() - inicio) * 1000),
+            tokens_entrada=uso.tokens_entrada - entrada, tokens_salida=uso.tokens_salida - salida)
         return respuesta
 
     # ----------------------------------------------------------------------
