@@ -26,9 +26,10 @@ RUN rm -rf /usr/lib/ollama/cuda_* /usr/lib/ollama/rocm_* /usr/lib/ollama/vulkan 
 # --------------------------------------------------------------------------
 FROM registry.fedoraproject.org/fedora-minimal:${VERSION_FEDORA}
 
-RUN microdnf install -y libstdc++ libgomp ca-certificates \
-    && microdnf clean all \
-    && mkdir -p /ollama \
+# No se instala nada con microdnf: la imagen mínima ya trae libstdc++ y los
+# certificados, y Ollama incluye su propia libgomp en /usr/lib/ollama. Así la
+# construcción no depende de descargar los índices de los repositorios de Fedora.
+RUN mkdir -p /ollama \
     && chown 1000:0 /ollama \
     && chmod g=u /ollama
 
